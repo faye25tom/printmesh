@@ -11,7 +11,7 @@ permissions:
 
 env:
   PDFIUM_TAG_MODERN: "chromium/6721"
-  PDFIUM_TAG_WIN7: "chromium/5414"
+  PDFIUM_TAG_WIN7: "chromium/6721"
 
 jobs:
   build-modern:
