@@ -1,0 +1,182 @@
+name: Build and Release Dual-Track Windows Installers
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PDFIUM_TAG_MODERN: "chromium/6721"
+  PDFIUM_TAG_WIN7: "chromium/5414"
+
+jobs:
+  build-modern:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Resolve Version
+        run: |
+          $ver = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME -replace '^v', '' } else { "0.0.0-dev" }
+          echo "APP_VERSION=$ver" >> $env:GITHUB_ENV
+
+      - name: Setup Official Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+          cache: false
+
+      - name: Resolve Go Modules & Install Wails
+        run: |
+          go mod tidy
+          go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build Daemon (Win10/11)
+        env:
+          CGO_ENABLED: "0"
+          GOOS: "windows"
+          GOARCH: "amd64"
+        run: |
+          New-Item -ItemType Directory -Force -Path "dist/bin" | Out-Null
+          go build -trimpath `
+            -ldflags="-s -w -X main.Version=$env:APP_VERSION" `
+            -o "dist/bin/printmesh-daemon.exe" `
+            ./cmd/daemon
+
+      - name: Build Wails UI (Win10/11)
+        run: |
+          wails build -clean -platform windows/amd64 -o printmesh-ui.exe -ldflags "-s -w -X main.Version=$env:APP_VERSION"
+          Copy-Item -Force "build/bin/printmesh-ui.exe" "dist/bin/printmesh-ui.exe"
+
+      - name: Download pdfium.dll (Modern)
+        run: |
+          $url = "https://github.com/bblanchon/pdfium-binaries/releases/download/$env:PDFIUM_TAG_MODERN/pdfium-win-x64.tgz"
+          Invoke-WebRequest -Uri $url -OutFile "pdfium.tgz"
+          New-Item -ItemType Directory -Force -Path "pdfium_tmp" | Out-Null
+          tar -xzf "pdfium.tgz" -C "pdfium_tmp"
+          Copy-Item -Force "pdfium_tmp/bin/pdfium.dll" "dist/bin/pdfium.dll"
+
+      - name: Package with Inno Setup (Modern)
+        run: |
+          $iscc = Get-Command iscc -ErrorAction SilentlyContinue
+          $isccPath = if ($iscc) { $iscc.Source } else { "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" }
+          & $isccPath "/DMyAppVersion=$env:APP_VERSION" "dist/setup.iss"
+
+      - name: Upload Modern Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-modern
+          path: dist/output/PrintMesh-Setup-*.exe
+
+  build-win7:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Resolve Version
+        run: |
+          $ver = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME -replace '^v', '' } else { "0.0.0-dev" }
+          echo "APP_VERSION=$ver" >> $env:GITHUB_ENV
+
+      - name: Setup XTLS/go-win7 Toolchain
+        run: |
+          $url = "https://github.com/XTLS/go-win7/releases/latest/download/go-for-win7-windows-amd64.zip"
+          Invoke-WebRequest -Uri $url -OutFile "go-win7.zip"
+          Expand-Archive -Path "go-win7.zip" -DestinationPath "C:\go-win7" -Force
+          $goroot = if (Test-Path "C:\go-win7\go\bin\go.exe") { "C:\go-win7\go" } else { "C:\go-win7" }
+          echo "GOROOT=$goroot" >> $env:GITHUB_ENV
+          echo "GOTOOLCHAIN=local" >> $env:GITHUB_ENV
+          echo "$goroot\bin" >> $env:GITHUB_PATH
+
+      - name: Verify go-win7 & Resolve Modules
+        run: |
+          go version
+          go mod tidy
+
+      - name: Build Daemon & Zero-WebView2 UI (Win7)
+        env:
+          CGO_ENABLED: "0"
+          GOOS: "windows"
+          GOARCH: "amd64"
+        run: |
+          New-Item -ItemType Directory -Force -Path "dist/bin" | Out-Null
+          go build -trimpath -tags win7 `
+            -ldflags="-s -w -X main.Version=$env:APP_VERSION" `
+            -o "dist/bin/printmesh-daemon.exe" `
+            ./cmd/daemon
+
+          go build -trimpath -tags win7 `
+            -ldflags="-H=windowsgui -s -w -X main.Version=$env:APP_VERSION" `
+            -o "dist/bin/printmesh-ui.exe" `
+            ./cmd/ui-win7
+
+      - name: Download pdfium.dll (Win7 Compatible)
+        run: |
+          $url = "https://github.com/bblanchon/pdfium-binaries/releases/download/$env:PDFIUM_TAG_WIN7/pdfium-win-x64.tgz"
+          Invoke-WebRequest -Uri $url -OutFile "pdfium.tgz"
+          New-Item -ItemType Directory -Force -Path "pdfium_tmp" | Out-Null
+          tar -xzf "pdfium.tgz" -C "pdfium_tmp"
+          Copy-Item -Force "pdfium_tmp/bin/pdfium.dll" "dist/bin/pdfium.dll"
+
+      - name: Install Inno Setup 6.2.2
+        run: |
+          $url = "https://github.com/jrsoftware/issrc/releases/download/is-6_2_2/innosetup-6.2.2.exe"
+          Invoke-WebRequest -Uri $url -OutFile "innosetup-6.2.2.exe"
+          Start-Process -FilePath ".\innosetup-6.2.2.exe" `
+            -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DIR="C:\InnoSetup622"' `
+            -Wait
+
+      - name: Package with Inno Setup 6.2.2 (Win7)
+        run: |
+          & "C:\InnoSetup622\ISCC.exe" `
+            "/DMyAppVersion=$env:APP_VERSION" `
+            "/DTargetWin7=1" `
+            "dist/setup.iss"
+
+      - name: Upload Win7 Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-win7
+          path: dist/output/PrintMesh-Setup-*.exe
+
+  publish-release:
+    needs: [build-modern, build-win7]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download All Installers
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate Unified SHA256SUMS.txt
+        working-directory: release-assets
+        run: |
+          sha256sum PrintMesh-Setup-*.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-') }}
+          files: |
+            release-assets/PrintMesh-Setup-*.exe
+            release-assets/SHA256SUMS.txt

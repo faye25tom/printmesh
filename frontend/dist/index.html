@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PrintMesh - 异地组网共享打印</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #10b981;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; }
+    .badge {
+      font-size: 12px; padding: 3px 10px; border-radius: 999px;
+      background: #334155; color: var(--muted);
+    }
+    .badge.ok { background: rgba(16, 185, 129, 0.18); color: #34d399; }
+    .badge.warn { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+    .badge.err { background: rgba(239, 68, 68, 0.18); color: #f87171; }
+
+    .login-banner {
+      display: none;
+      background: rgba(245, 158, 11, 0.12);
+      border-bottom: 1px solid rgba(245, 158, 11, 0.4);
+      padding: 12px 20px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+    }
+    .login-banner.show { display: flex; }
+    .login-url-box {
+      font-family: Consolas, monospace;
+      background: var(--bg);
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      color: #fde68a;
+      max-width: 360px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    .layout { display: flex; flex: 1; overflow: hidden; }
+    nav {
+      width: 190px;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      padding: 14px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    nav button {
+      text-align: left;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      padding: 10px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    nav button:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+    nav button.active { background: var(--primary); color: #fff; font-weight: 500; }
+
+    main { flex: 1; padding: 20px 24px; overflow-y: auto; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    h2 { font-size: 18px; margin-bottom: 6px; }
+    .desc { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .printer-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 10px;
+      background: rgba(15, 23, 42, 0.45);
+    }
+    .printer-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .btn {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn:hover { background: var(--primary-hover); }
+    .btn.secondary { background: #334155; color: var(--text); }
+    .btn.secondary:hover { background: #475569; }
+    .btn.warn { background: var(--warn); color: #111827; font-weight: 600; }
+    .btn.danger { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239,68,68,0.4); }
+
+    .form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+    }
+    .check-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border: 1px solid var(--border);
+      border-radius: 8px; margin-bottom: 8px; cursor: pointer;
+    }
+    .toast {
+      position: fixed; bottom: 18px; right: 20px;
+      background: #1e293b; border: 1px solid var(--border);
+      padding: 10px 16px; border-radius: 8px; font-size: 13px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      display: none;
+    }
+    .empty { text-align: center; padding: 36px 0; color: var(--muted); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span>🖨️ PrintMesh</span>
+      <span id="statusBadge" class="badge">正在连接后台服务...</span>
+    </div>
+    <div class="actions">
+      <button class="btn secondary" onclick="refreshAll()">刷新状态</button>
+    </div>
+  </header>
+
+  <!-- 便捷登录横幅：检测到未登录时自动展示 -->
+  <div id="loginBanner" class="login-banner">
+    <div>
+      <strong>需要登录授权：</strong>
+      <span id="authUrlText" class="login-url-box">正在获取登录链接...</span>
+    </div>
+    <div class="actions">
+      <button class="btn warn" onclick="openLogin()">浏览器一键授权</button>
+      <button class="btn secondary" onclick="copyAuthUrl()">复制链接(手机代登)</button>
+      <button class="btn secondary" onclick="triggerLogin()">重新获取链接</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <nav>
+      <button class="active" onclick="switchTab('remote', this)">🌐 远程打印机</button>
+      <button onclick="switchTab('share', this)">📤 共享本机打印机</button>
+      <button onclick="switchTab('settings', this)">⚙️ 组网与账号</button>
+    </nav>
+
+    <main>
+      <section id="tab-remote" class="tab active">
+        <div class="row" style="margin-bottom: 14px;">
+          <div>
+            <h2>组网内可用的远程打印机</h2>
+            <p class="desc">免驱模式适合 Word/PDF 日常办公；原厂驱动模式适合热敏面单、票据针式机。</p>
+          </div>
+          <button class="btn secondary" onclick="loadRemotePrinters()">重新扫描</button>
+        </div>
+        <div id="remoteList">
+          <div class="empty">正在扫描组网内的打印服务端...</div>
+        </div>
+      </section>
+
+      <section id="tab-share" class="tab">
+        <h2>共享本机物理打印机</h2>
+        <p class="desc">勾选后，组网内其他电脑即可直接搜索并连接您电脑上的 USB 或局域网打印机。</p>
+        <div class="card">
+          <div id="localList"><div class="empty">正在读取本机打印机...</div></div>
+          <div style="margin-top: 12px;">
+            <button class="btn" onclick="saveSettings()">保存并应用共享</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-settings" class="tab">
+        <h2>Tailscale / Headscale 组网与便捷入网</h2>
+        <p class="desc">留空服务器地址即默认使用官方 Tailscale；也可粘贴团队邀请口令（pm://join?...）一键填入。</p>
+
+        <div class="card">
+          <div class="form-group">
+            <label>快捷团队邀请口令（可选，粘贴后点击解析自动填入下方配置）</label>
+            <div class="row">
+              <input id="joinTokenInput" type="text" placeholder="pm://join?u=https://hs.yourdomain.com&k=tskey-auth-xxx" />
+              <button class="btn secondary" style="white-space:nowrap;" onclick="parseJoinCode()">解析口令</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="form-group">
+            <label>本机节点名称（作为共享端建议以 pm-srv- 开头，如 pm-srv-office）</label>
+            <input id="cfgHostname" type="text" placeholder="pm-srv-office" />
+          </div>
+          <div class="form-group">
+            <label>Headscale 服务器地址（留空则使用官方 Tailscale）</label>
+            <input id="cfgControlURL" type="text" placeholder="https://hs.yourdomain.com" />
+          </div>
+          <div class="form-group">
+            <label>预授权密钥 AuthKey（可选，留空则通过上方浏览器/链接授权登录）</label>
+            <input id="cfgAuthKey" type="password" placeholder="tskey-auth-..." />
+          </div>
+          <div class="actions">
+            <button class="btn" onclick="saveSettings()">保存配置并重连</button>
+            <button class="btn secondary" onclick="triggerLogin()">获取新登录链接</button>
+            <button class="btn danger" onclick="doLogout()">退出当前账号</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    // 双模式后端适配器：自动识别 Wails 桌面环境 (Win10/11) 或本地 Web 控制台 (Win7)
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionToken = urlParams.get("token") || "";
+
+    async function webReq(method, path, body) {
+      const opts = {
+        method,
+        headers: { "X-PrintMesh-Token": sessionToken }
+      };
+      if (body !== undefined) {
+        opts.headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(body);
+      }
+      const res = await fetch("/ui-api/" + path, opts);
+      const text = await res.text();
+      if (!res.ok) throw new Error(text || ("HTTP " + res.status));
+      return text ? JSON.parse(text) : null;
+    }
+
+    const Backend = {
+      isWails: () => Boolean(window.go && window.go.main && window.go.main.App),
+      getStatus: () => Backend.isWails() ? window.go.main.App.GetDaemonStatus() : webReq("GET", "status"),
+      listLocal: () => Backend.isWails() ? window.go.main.App.ListLocalPrinters() : webReq("GET", "local-printers"),
+      listRemote: () => Backend.isWails() ? window.go.main.App.ListRemotePrinters() : webReq("GET", "remote-printers"),
+      saveConfig: (cfg) => Backend.isWails() ? window.go.main.App.SaveConfig(cfg) : webReq("POST", "config", cfg),
+      startLogin: () => Backend.isWails() ? window.go.main.App.StartLogin() : webReq("POST", "login"),
+      logout: () => Backend.isWails() ? window.go.main.App.Logout() : webReq("POST", "logout"),
+      connectPrinter: (host, printer, mode) => Backend.isWails()
+        ? window.go.main.App.ConnectRemotePrinter(host, printer, mode)
+        : webReq("POST", "connect-printer", { remote_host: host, remote_printer: printer, mode }),
+      openUrl: (url) => {
+        if (!url) return;
+        if (Backend.isWails()) window.go.main.App.OpenLoginURL(url);
+        else window.open(url, "_blank");
+      }
+    };
+
+    let currentAuthURL = "";
+    let savedShared = [];
+    let configInitialized = false;
+
+    function showToast(msg, isError = false) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.style.borderColor = isError ? "#ef4444" : "#3b82f6";
+      el.style.display = "block";
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => { el.style.display = "none"; }, 3800);
+    }
+
+    function switchTab(id, btn) {
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
+      document.getElementById("tab-" + id).classList.add("active");
+      btn.classList.add("active");
+      if (id === "remote") loadRemotePrinters();
+      if (id === "share") loadLocalPrinters();
+    }
+
+    async function refreshStatus() {
+      const badge = document.getElementById("statusBadge");
+      const banner = document.getElementById("loginBanner");
+      const authText = document.getElementById("authUrlText");
+      try {
+        const st = await Backend.getStatus();
+        currentAuthURL = st.auth_url || "";
+        if (!configInitialized) {
+          if (st.hostname) document.getElementById("cfgHostname").value = st.hostname;
+          if (st.control_url !== undefined) document.getElementById("cfgControlURL").value = st.control_url;
+          configInitialized = true;
+        }
+        if (Array.isArray(st.shared_printers)) savedShared = st.shared_printers;
+
+        if (st.state === "Running") {
+          badge.className = "badge ok";
+          badge.textContent = "已在线 · " + (st.ip || "Tailnet");
+          banner.classList.remove("show");
+        } else if (st.state === "NeedsLogin" || currentAuthURL) {
+          badge.className = "badge warn";
+          badge.textContent = "等待登录授权";
+          authText.textContent = currentAuthURL || "点击右侧按钮生成登录链接";
+          banner.classList.add("show");
+        } else {
+          badge.className = "badge";
+          badge.textContent = st.state || "初始化中";
+          banner.classList.remove("show");
+        }
+      } catch (err) {
+        badge.className = "badge err";
+        badge.textContent = "后台服务未连接";
+      }
+    }
+
+    async function loadRemotePrinters() {
+      const container = document.getElementById("remoteList");
+      try {
+        const items = await Backend.listRemote();
+        if (!items || items.length === 0) {
+          container.innerHTML = '<div class="empty">暂未发现组网内在线的共享打印机（请确认共享端节点名以 pm-srv- 开头）</div>';
+          return;
+        }
+        container.innerHTML = items.map(item => `
+          <div class="printer-item">
+            <div>
+              <strong>${escapeHtml(item.printer)}</strong>
+              <div class="printer-meta">所属主机: ${escapeHtml(item.host)} (${escapeHtml(item.ip || "")})</div>
+            </div>
+            <div class="actions">
+              <button class="btn" onclick="connectPrinter('${escapeAttr(item.host)}', '${escapeAttr(item.printer)}', 'ipp')">免驱连接 (IPP)</button>
+              <button class="btn secondary" onclick="connectPrinter('${escapeAttr(item.host)}', '${escapeAttr(item.printer)}', 'raw')">原厂驱动 (RAW)</button>
+            </div>
+          </div>
+        `).join("");
+      } catch (err) {
+        container.innerHTML = `<div class="empty">${escapeHtml(String(err))}</div>`;
+      }
+    }
+
+    async function loadLocalPrinters() {
+      const container = document.getElementById("localList");
+      try {
+        const list = await Backend.listLocal();
+        if (!list || list.length === 0) {
+          container.innerHTML = '<div class="empty">本机未检测到物理打印机</div>';
+          return;
+        }
+        container.innerHTML = list.map(name => {
+          const checked = savedShared.includes(name) ? "checked" : "";
+          return `
+            <label class="check-row">
+              <input type="checkbox" class="local-printer-cb" value="${escapeAttr(name)}" ${checked} />
+              <span>${escapeHtml(name)}</span>
+            </label>
+          `;
+        }).join("");
+      } catch (err) {
+        container.innerHTML = `<div class="empty">${escapeHtml(String(err))}</div>`;
+      }
+    }
+
+    async function connectPrinter(host, printer, mode) {
+      showToast(`正在以 ${mode.toUpperCase()} 模式连接 ${printer}，请稍候...`);
+      try {
+        await Backend.connectPrinter(host, printer, mode);
+        showToast(`连接成功！现在可以在任意软件按 Ctrl+P 选择 ${printer}`);
+      } catch (err) {
+        showToast("连接失败: " + String(err), true);
+      }
+    }
+
+    function parseJoinCode() {
+      const raw = document.getElementById("joinTokenInput").value.trim();
+      try {
+        const normalized = raw.replace(/^pm:\/\//i, "https://");
+        const u = new URL(normalized);
+        const ctrl = u.searchParams.get("u") || "";
+        const key = u.searchParams.get("k") || "";
+        if (ctrl) document.getElementById("cfgControlURL").value = ctrl;
+        if (key) document.getElementById("cfgAuthKey").value = key;
+        showToast("邀请口令解析成功，请点击下方「保存配置并重连」");
+      } catch {
+        showToast("口令格式无效，应类似 pm://join?u=https://...&k=tskey-...", true);
+      }
+    }
+
+    async function saveSettings() {
+      const cbs = document.querySelectorAll(".local-printer-cb");
+      const checked = cbs.length > 0
+        ? Array.from(document.querySelectorAll(".local-printer-cb:checked")).map(el => el.value)
+        : savedShared;
+      const cfg = {
+        hostname: document.getElementById("cfgHostname").value.trim() || "pm-node",
+        control_url: document.getElementById("cfgControlURL").value.trim(),
+        auth_key: document.getElementById("cfgAuthKey").value.trim(),
+        shared_printers: checked
+      };
+      try {
+        await Backend.saveConfig(cfg);
+        savedShared = cfg.shared_printers;
+        showToast("配置已保存，后台正在应用并重连...");
+        setTimeout(refreshStatus, 1500);
+      } catch (err) {
+        showToast("保存失败: " + String(err), true);
+      }
+    }
+
+    async function triggerLogin() {
+      try {
+        await Backend.startLogin();
+        showToast("已向后台请求登录链接，请稍候...");
+        setTimeout(refreshStatus, 1200);
+      } catch (err) {
+        showToast("请求登录失败: " + String(err), true);
+      }
+    }
+
+    async function doLogout() {
+      if (!confirm("确定退出当前 Tailscale/Headscale 账号吗？")) return;
+      try {
+        await Backend.logout();
+        showToast("已退出登录");
+        setTimeout(refreshStatus, 1000);
+      } catch (err) {
+        showToast("退出失败: " + String(err), true);
+      }
+    }
+
+    function openLogin() {
+      if (currentAuthURL) Backend.openUrl(currentAuthURL);
+      else triggerLogin();
+    }
+
+    function copyAuthUrl() {
+      if (!currentAuthURL) return;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(currentAuthURL).then(() => showToast("登录链接已复制，可发送到手机浏览器打开完成授权"));
+      } else {
+        prompt("请复制下方链接到手机或其他电脑浏览器完成授权：", currentAuthURL);
+      }
+    }
+
+    function refreshAll() {
+      refreshStatus();
+      loadRemotePrinters();
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function escapeAttr(s) {
+      return String(s).replace(/['"\]/g, "\$&");
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      refreshAll();
+      setInterval(refreshStatus, 4000);
+    });
+  </script>
+</body>
+</html>

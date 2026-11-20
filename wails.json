@@ -1,0 +1,21 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "PrintMesh",
+  "outputfilename": "printmesh-ui",
+  "frontend:dir": "frontend",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": "",
+  "author": {
+    "name": "PrintMesh Contributors",
+    "email": ""
+  },
+  "info": {
+    "companyName": "PrintMesh",
+    "productName": "PrintMesh",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright (c) 2026 PrintMesh Contributors",
+    "comments": "基于 Tailscale 的异地组网共享打印软件"
+  }
+}
